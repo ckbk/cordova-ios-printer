@@ -1,0 +1,55 @@
+# Node.js
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+package-lock.json
+
+# iOS
+*.xcodeproj
+*.pbxproj
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcworkspace
+*.moved-aside
+*.xcuserstate
+*.xcscmblueprint
+xcuserdata/
+DerivedData/
+.idea/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# IDE
+.vscode/
+*.swp
+*.swo
+*~
+
+# Cordova
+platforms/
+plugins/
+
+# Build
+dist/
+build/
+out/
+
+# Logs
+logs
+*.log
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock

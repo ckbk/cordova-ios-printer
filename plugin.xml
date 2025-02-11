@@ -1,0 +1,17 @@
+<?xml version='1.0' encoding='utf-8'?>
+<plugin id="cordova-ios-printer" version="1.0.0" xmlns="http://apache.org/cordova/ns/plugins/1.0"
+        xmlns:android="http://schemas.android.com/apk/res/android">
+    <name>IosPrinter</name>
+    <js-module name="IosPrinter" src="www/IosPrinter.js">
+        <clobbers target="cordova.plugins.IosPrinter"/>
+    </js-module>
+    <platform name="ios">
+        <config-file parent="/*" target="config.xml">
+            <feature name="IosPrinter">
+                <param name="ios-package" value="IosPrinter"/>
+            </feature>
+        </config-file>
+        <header-file src="src/ios/IosPrinter.h"/>
+        <source-file src="src/ios/IosPrinter.m"/>
+    </platform>
+</plugin>
