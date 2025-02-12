@@ -1,5 +1,5 @@
 {
-  "name": "iosprinter",
+  "name": "cordova-ios-printer",
   "version": "1.0.0",
   "description": "A plugin to help print on ios from your cordova app",
   "main": "IosPrinter.js",
