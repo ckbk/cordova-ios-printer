@@ -35,30 +35,39 @@
     [webView evaluateJavaScript:@"document.documentElement.scrollHeight" completionHandler:^(id result, NSError *error) {
         CGFloat contentHeight = [result doubleValue];
 
-        // Get actual paper size using UIPrintPaper API
-        UIPrintPaper *paper = [UIPrintPaper bestPaperForPageSize:CGSizeMake(612, 792)  // Default to Letter size (8.5" x 11")
-                                              withPapersFromArray:nil];
-
+        UIPrintPaper *paper = [UIPrintPaper bestPaperForPageSize:CGSizeMake(595, 842) withPapersFromArray:nil];
         CGSize paperSize = paper.paperSize;
-        webView.frame = CGRectMake(0, 0, paperSize.width, contentHeight);
+
+        CGRect printableRect = CGRectMake(72, 72, paperSize.width - 144, paperSize.height - 144);
+        CGFloat scaleFactor = printableRect.size.width / (paperSize.width - 110);
+
+        // Remove formatter margins
+        UIViewPrintFormatter *formatter = [webView viewPrintFormatter];
+        formatter.contentInsets = UIEdgeInsetsZero;  // Remove default insets
 
         UIPrintPageRenderer *renderer = [[UIPrintPageRenderer alloc] init];
-        [renderer addPrintFormatter:[webView viewPrintFormatter] startingAtPageAtIndex:0];
+        [renderer addPrintFormatter:formatter startingAtPageAtIndex:0];
 
-        CGFloat margin = 72.0;
-        CGRect printableRect = CGRectMake(margin, margin,
-                                        paperSize.width - (margin * 2),
-                                        paperSize.height - (margin * 2));
-
+        // Set renderer rects
         [renderer setValue:[NSValue valueWithCGRect:CGRectMake(0, 0, paperSize.width, paperSize.height)]
-                  forKey:@"paperRect"];
+                 forKey:@"paperRect"];
         [renderer setValue:[NSValue valueWithCGRect:printableRect]
-                  forKey:@"printableRect"];
+                 forKey:@"printableRect"];
+
+        // Apply scaling directly to webview
+        webView.transform = CGAffineTransformMakeScale(scaleFactor, scaleFactor);
+        webView.frame = CGRectMake(0, 0,
+                                 paperSize.width / scaleFactor,
+                                 contentHeight / scaleFactor);
 
         printController.printPageRenderer = renderer;
-        printController.printInfo = printInfo;
+        printController.printInfo.outputType = UIPrintInfoOutputGeneral;
 
         [printController presentAnimated:YES completionHandler:^(UIPrintInteractionController *pi, BOOL completed, NSError *error) {
+            // Reset transform after printing
+            webView.transform = CGAffineTransformIdentity;
+            webView.frame = CGRectZero;
+
             CDVPluginResult* pluginResult;
             if (completed) {
                 pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
@@ -70,6 +79,7 @@
         }];
     }];
 }
+
 
 
 @end
