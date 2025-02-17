@@ -1,8 +1,8 @@
 #import <Cordova/CDVPlugin.h>
-#import <WebKit/WebKit.h>
 
-@interface IosPrinter : CDVPlugin <WKNavigationDelegate>
+@interface IosPrinter : CDVPlugin
 
+@property (nonatomic, readonly) WKWebView *printerWebView;
 - (void)print:(CDVInvokedUrlCommand*)command;
 
 @end

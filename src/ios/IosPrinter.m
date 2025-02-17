@@ -1,85 +1,120 @@
 #import "IosPrinter.h"
-@import ObjectiveC;
+#import <WebKit/WebKit.h>
 
-@implementation IosPrinter {
-    WKWebView *_printView;
-}
+@interface IosPrinter() <WKNavigationDelegate>
+@property (strong, nonatomic) WKWebView *printerWebView;
+@property (copy, nonatomic) NSString *callbackId;
+@end
+
+@implementation IosPrinter
 
 - (void)print:(CDVInvokedUrlCommand*)command {
-    NSString *htmlContent = [command.arguments objectAtIndex:0];
+    self.callbackId = command.callbackId;
+    NSString* htmlString = [command.arguments objectAtIndex:0];
 
-    WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
-
-    if (@available(iOS 14.0, *)) {
-        [config.preferences setValue:@YES forKey:@"allowFileAccessFromFileURLs"];
+    if (!htmlString || [htmlString isEqualToString:@""]) {
+        [self sendErrorResult:@"Empty HTML content"];
+        return;
     }
 
-    _printView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:config];
-    _printView.navigationDelegate = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        CGFloat paperWidth = 595.2; // A4 width in points
+        CGFloat paperHeight = 841.8; // A4 height
+        // Use proper frame size and hidden web view
+        self.printerWebView = [[WKWebView alloc] initWithFrame:CGRectMake(0, 0, paperWidth, paperHeight)];
+        self.printerWebView.navigationDelegate = self;
+        self.printerWebView.hidden = YES; // Hide but keep in hierarchy
+        [self.viewController.view addSubview:self.printerWebView];
 
-    NSString *wwwPath = [[NSBundle mainBundle] resourcePath];
-    NSURL *baseURL = [NSURL fileURLWithPath:wwwPath];
-
-    [_printView loadHTMLString:htmlContent baseURL:baseURL];
-    objc_setAssociatedObject(_printView, @"command", command, OBJC_ASSOCIATION_RETAIN);
+        // Load with base URL for local resources
+        NSURL *baseURL = [NSURL fileURLWithPath:NSTemporaryDirectory()];
+        [self.printerWebView loadHTMLString:htmlString baseURL:baseURL];
+    });
 }
-
-#pragma mark - WKNavigationDelegate
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
-    CDVInvokedUrlCommand* command = objc_getAssociatedObject(webView, @"command");
-
-    UIPrintInteractionController *printController = [UIPrintInteractionController sharedPrintController];
-    UIPrintInfo *printInfo = [UIPrintInfo printInfo];
-
-    [webView evaluateJavaScript:@"document.documentElement.scrollHeight" completionHandler:^(id result, NSError *error) {
-        CGFloat contentHeight = [result doubleValue];
-
-        UIPrintPaper *paper = [UIPrintPaper bestPaperForPageSize:CGSizeMake(595, 842) withPapersFromArray:nil];
-        CGSize paperSize = paper.paperSize;
-
-        CGRect printableRect = CGRectMake(72, 72, paperSize.width - 144, paperSize.height - 144);
-        CGFloat scaleFactor = printableRect.size.width / (paperSize.width - 110);
-
-        // Remove formatter margins
-        UIViewPrintFormatter *formatter = [webView viewPrintFormatter];
-        formatter.contentInsets = UIEdgeInsetsZero;  // Remove default insets
-
-        UIPrintPageRenderer *renderer = [[UIPrintPageRenderer alloc] init];
-        [renderer addPrintFormatter:formatter startingAtPageAtIndex:0];
-
-        // Set renderer rects
-        [renderer setValue:[NSValue valueWithCGRect:CGRectMake(0, 0, paperSize.width, paperSize.height)]
-                 forKey:@"paperRect"];
-        [renderer setValue:[NSValue valueWithCGRect:printableRect]
-                 forKey:@"printableRect"];
-
-        // Apply scaling directly to webview
-        webView.transform = CGAffineTransformMakeScale(scaleFactor, scaleFactor);
-        webView.frame = CGRectMake(0, 0,
-                                 paperSize.width / scaleFactor,
-                                 contentHeight / scaleFactor);
-
-        printController.printPageRenderer = renderer;
-        printController.printInfo.outputType = UIPrintInfoOutputGeneral;
-
-        [printController presentAnimated:YES completionHandler:^(UIPrintInteractionController *pi, BOOL completed, NSError *error) {
-            // Reset transform after printing
-            webView.transform = CGAffineTransformIdentity;
-            webView.frame = CGRectZero;
-
-            CDVPluginResult* pluginResult;
-            if (completed) {
-                pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
-            } else {
-                pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
-                    messageAsString:error ? error.localizedDescription : @"Print cancelled"];
+  NSString *dimensionsJS = @"(() => {"
+          "const meta = document.createElement('meta');"
+          "meta.name = 'viewport';"
+          "meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';"
+          "document.head.appendChild(meta);"
+          "return {"
+              "width: Math.min(document.documentElement.scrollWidth, document.documentElement.offsetWidth),"
+          "};"
+      "})()";
+    // Add additional delay to ensure rendering completion
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+      [webView evaluateJavaScript:dimensionsJS completionHandler:^(NSDictionary* results, NSError* errorDimentions) {
+            if (errorDimentions) {
+              NSLog(@"Error: %@", errorDimentions.localizedDescription);
+              [self sendErrorResult:errorDimentions.localizedDescription];
+              return;
             }
-            [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+            NSLog(@"Result = %@", results);
+            CGFloat contentWidth = [results[@"width"] doubleValue];
+
+            UIPrintPaper *paper = [UIPrintPaper bestPaperForPageSize:CGSizeMake(595, 842) withPapersFromArray:@[]];
+            CGSize paperSize = paper.paperSize;
+
+            CGRect paperRect = CGRectMake(0, 0, paperSize.width + 36, paperSize.height);
+
+
+
+            CGFloat scaleFactor = paperSize.width / (contentWidth-72);
+
+            webView.transform = CGAffineTransformMakeScale(scaleFactor, scaleFactor);
+
+            CGRect printableRect = CGRectInset(paperRect, 36, 36);
+
+            // Remove formatter margins
+            UIViewPrintFormatter *formatter = [webView viewPrintFormatter];
+            formatter.perPageContentInsets = UIEdgeInsetsZero;  // Remove default insets
+
+            UIPrintPageRenderer *renderer = [[UIPrintPageRenderer alloc] init];
+            [renderer addPrintFormatter:formatter startingAtPageAtIndex:0];
+
+            [renderer setValue:[NSValue valueWithCGRect:paperRect] forKey:@"paperRect"];
+            [renderer setValue:[NSValue valueWithCGRect:printableRect]
+                     forKey:@"printableRect"];
+
+            UIPrintInteractionController *printController = [UIPrintInteractionController sharedPrintController];
+            printController.printPageRenderer = renderer;
+            printController.showsPaperSelectionForLoadedPapers = YES;
+
+            [printController presentAnimated:YES completionHandler:^(UIPrintInteractionController *piController, BOOL completed, NSError *error) {
+                [self cleanupWebView];
+                if (error) {
+                    [self sendErrorResult:error.localizedDescription];
+                } else if (!completed) {
+                    [self sendErrorResult:@"Print cancelled"];
+                } else {
+                    [self sendSuccessResult];
+                }
+            }];
         }];
-    }];
+    });
 }
 
 
+- (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    [self cleanupWebView];
+    [self sendErrorResult:error.localizedDescription];
+}
+
+- (void)cleanupWebView {
+    [self.printerWebView removeFromSuperview];
+    self.printerWebView = nil;
+}
+
+- (void)sendSuccessResult {
+    CDVPluginResult* result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
+    [self.commandDelegate sendPluginResult:result callbackId:self.callbackId];
+}
+
+- (void)sendErrorResult:(NSString*)message {
+    CDVPluginResult* result = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:message];
+    [self.commandDelegate sendPluginResult:result callbackId:self.callbackId];
+}
 
 @end
+
