@@ -1,7 +1,7 @@
 #import "IosPrinter.h"
 #import <WebKit/WebKit.h>
 
-@interface IosPrinter() <WKNavigationDelegate>
+@interface IosPrinter() <WKNavigationDelegate, UIPrintInteractionControllerDelegate>
 @property (strong, nonatomic) WKWebView *printerWebView;
 @property (copy, nonatomic) NSString *callbackId;
 @end
@@ -18,15 +18,14 @@
     }
 
     dispatch_async(dispatch_get_main_queue(), ^{
-        CGFloat paperWidth = 595.2; // A4 width in points
-        CGFloat paperHeight = 841.8; // A4 height
-        // Use proper frame size and hidden web view
+        CGFloat paperWidth = 633;
+        CGFloat paperHeight = 841.8;
+
         self.printerWebView = [[WKWebView alloc] initWithFrame:CGRectMake(0, 0, paperWidth, paperHeight)];
         self.printerWebView.navigationDelegate = self;
         self.printerWebView.hidden = YES; // Hide but keep in hierarchy
         [self.viewController.view addSubview:self.printerWebView];
 
-        // Load with base URL for local resources
         NSURL *baseURL = [NSURL fileURLWithPath:NSTemporaryDirectory()];
         [self.printerWebView loadHTMLString:htmlString baseURL:baseURL];
     });
@@ -50,21 +49,24 @@
               [self sendErrorResult:errorDimentions.localizedDescription];
               return;
             }
-            NSLog(@"Result = %@", results);
+
             CGFloat contentWidth = [results[@"width"] doubleValue];
 
-            UIPrintPaper *paper = [UIPrintPaper bestPaperForPageSize:CGSizeMake(595, 842) withPapersFromArray:@[]];
+            UIPrintInteractionController *printController = [UIPrintInteractionController sharedPrintController];
+            printController.delegate = self;
+
+
+
+            UIPrintPaper *paper = [UIPrintPaper bestPaperForPageSize:CGSizeMake(633, 842) withPapersFromArray:@[]];
             CGSize paperSize = paper.paperSize;
 
-            CGRect paperRect = CGRectMake(0, 0, paperSize.width + 36, paperSize.height);
+            CGRect paperRect = CGRectMake(0, 0, paperSize.width, paperSize.height);
 
-
-
-            CGFloat scaleFactor = paperSize.width / (contentWidth-72);
+            CGFloat scaleFactor = paperSize.width / contentWidth;
 
             webView.transform = CGAffineTransformMakeScale(scaleFactor, scaleFactor);
 
-            CGRect printableRect = CGRectInset(paperRect, 36, 36);
+            CGRect printableRect = CGRectInset(paperRect, 0, 0);
 
             // Remove formatter margins
             UIViewPrintFormatter *formatter = [webView viewPrintFormatter];
@@ -77,7 +79,7 @@
             [renderer setValue:[NSValue valueWithCGRect:printableRect]
                      forKey:@"printableRect"];
 
-            UIPrintInteractionController *printController = [UIPrintInteractionController sharedPrintController];
+
             printController.printPageRenderer = renderer;
             printController.showsPaperSelectionForLoadedPapers = YES;
 
